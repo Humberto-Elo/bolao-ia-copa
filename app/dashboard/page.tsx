@@ -18,6 +18,7 @@ export default function Dashboard(){
   const [loading,setLoading]=useState(true);
   const [msg,setMsg]=useState('');
   const [ai,setAi]=useState<Record<string,string>>({});
+  const [summary,setSummary]=useState('');
 
   useEffect(()=>{ init(); },[]);
   async function init(){
@@ -55,6 +56,12 @@ export default function Dashboard(){
     const r = await fetch('/api/ai-analysis',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({match, ranking})});
     const j = await r.json(); setAi(prev=>({...prev,[match.id]:j.text || j.error || 'Não foi possível gerar análise.'}));
   }
+  async function getSummary(){
+    setSummary('Gerando resumo inteligente da rodada...');
+    const r = await fetch('/api/round-summary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({matches, ranking, predictionsCount: allPreds.length})});
+    const j = await r.json();
+    setSummary(j.text || j.error || 'Não foi possível gerar resumo.');
+  }
   const ranking = useMemo(()=>{
     const totals:Record<string,{profile?:Profile; points:number; exact:number; played:number}>={};
     profiles.forEach(p=>totals[p.id]={profile:p,points:0,exact:0,played:0});
@@ -63,16 +70,25 @@ export default function Dashboard(){
   },[profiles,allPreds]);
   const myRank = ranking.findIndex(r=>r.id===user?.id)+1;
   const myPoints = ranking.find(r=>r.id===user?.id)?.points || 0;
+  const myPredList = Object.values(preds);
+  const avgGoals = myPredList.length ? (myPredList.reduce((sum,p)=>sum+p.predicted_home_score+p.predicted_away_score,0)/myPredList.length).toFixed(1) : '0';
+  const exacts = ranking.find(r=>r.id===user?.id)?.exact || 0;
+  const profileName = myPredList.length === 0 ? 'Estreante' : Number(avgGoals) >= 3.5 ? 'Caçador de placar elástico' : exacts > 0 ? 'Placar cravado' : myPredList.some(p=>p.predicted_home_score===p.predicted_away_score) ? 'Rei do empate' : 'Estrategista';
 
   if(loading) return <main className="container"><div className="card">Carregando...</div></main>;
   return <main className="container">
-    <div className="header"><div><h1>Bolão IA da Copa</h1><p>Palpites, ranking e análises inteligentes.</p></div><div className="row"><button className="btn secondary" onClick={syncResults}>Atualizar resultados</button><button className="btn" onClick={signOut}>Sair</button></div></div>
+    <div className="header"><div><h1>Bolão IA da Copa</h1><p>Palpites, ranking e análises inteligentes.</p></div><div className="row"><button className="btn secondary" onClick={getSummary}>Resumo IA</button><button className="btn secondary" onClick={syncResults}>Atualizar resultados</button><button className="btn" onClick={signOut}>Sair</button></div></div>
     <section className="grid">
       <div className="metric"><span className="small">Minha pontuação</span><br/><b>{myPoints}</b></div>
       <div className="metric"><span className="small">Minha posição</span><br/><b>{myRank ? `${myRank}º`:'-'}</b></div>
       <div className="metric"><span className="small">Palpites enviados</span><br/><b>{Object.keys(preds).length}</b></div>
       <div className="metric"><span className="small">Jogos cadastrados</span><br/><b>{matches.length}</b></div>
     </section>
+    <section className="insights">
+      <div className="insight-card"><span className="small">Perfil do participante</span><b>{profileName}</b><p>Média de gols nos palpites: {avgGoals}</p></div>
+      <div className="insight-card"><span className="small">Badges</span><div className="row"><span className="pill">🎯 Palpiteiro ativo</span>{exacts > 0 && <span className="pill">🏆 Placar cravado</span>}{myRank === 1 && <span className="pill">👑 Líder</span>}</div></div>
+    </section>
+    {summary && <div className="aiBox summaryBox">{summary}</div>}
     {msg && <div className={msg.includes('sucesso') || msg.includes('conclu') ? 'success':'error'}>{msg}</div>}
     <section className="grid2">
       <div>
